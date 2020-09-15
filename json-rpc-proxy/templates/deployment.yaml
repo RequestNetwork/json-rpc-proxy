@@ -1,14 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "infura-proxy.fullname" . }}
+  name: {{ include "json-rpc-proxy.fullname" . }}
   labels:
-    {{- include "infura-proxy.labels" . | nindent 4 }}
+    {{- include "json-rpc-proxy.labels" . | nindent 4 }}
 spec:
+{{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+{{- end }}
   selector:
     matchLabels:
-      {{- include "infura-proxy.selectorLabels" . | nindent 6 }}
+      {{- include "json-rpc-proxy.selectorLabels" . | nindent 6 }}
   template:
     metadata:
     {{- with .Values.podAnnotations }}
@@ -16,12 +18,13 @@ spec:
         {{- toYaml . | nindent 8 }}
     {{- end }}
       labels:
-        {{- include "infura-proxy.selectorLabels" . | nindent 8 }}
+        {{- include "json-rpc-proxy.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      serviceAccountName: {{ include "json-rpc-proxy.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -34,9 +37,19 @@ spec:
             - name: http
               containerPort: 80
               protocol: TCP
-            - name: https
-              containerPort: 443
-              protocol: TCP
+          env:
+          - name: ADDRESS
+            value: "{{ .Values.upstreamAddress }}"
+          - name: CACHE_TIME
+            value: "{{ .Values.cacheTime}}"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       {{- with .Values.nodeSelector }}

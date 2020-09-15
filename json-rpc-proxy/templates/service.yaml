@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "infura-proxy.fullname" . }}
+  name: {{ include "json-rpc-proxy.fullname" . }}
   labels:
-    {{- include "infura-proxy.labels" . | nindent 4 }}
+    {{- include "json-rpc-proxy.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -12,4 +12,4 @@ spec:
       protocol: TCP
       name: http
   selector:
-    {{- include "infura-proxy.selectorLabels" . | nindent 4 }}
+    {{- include "json-rpc-proxy.selectorLabels" . | nindent 4 }}

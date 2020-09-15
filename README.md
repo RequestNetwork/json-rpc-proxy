@@ -1,3 +1,3 @@
-# Infura Cache Proxy
+# JSON RPC Cache Proxy
 
-This repo contains an open-resty cache proxy for infura requests.
+This repo contains an open-resty cache proxy for JSON RPC requests.

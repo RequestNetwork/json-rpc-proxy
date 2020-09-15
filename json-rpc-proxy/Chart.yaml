@@ -1,6 +1,6 @@
 apiVersion: v2
-name: infura-proxy
-description: A Helm chart for Kubernetes
+name: json-rpc-proxy
+description: A Helm chart for a JSON-RPC cache proxy
 
 # A chart can be either an 'application' or a 'library' chart.
 #
