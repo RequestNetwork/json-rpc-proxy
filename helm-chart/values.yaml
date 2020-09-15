@@ -5,7 +5,7 @@
 replicaCount: 2
 
 image:
-  repository: eu.gcr.io/request-240714/infura-proxy
+  repository: eu.gcr.io/request-240714/json-rpc-proxy
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
