@@ -1,43 +1,91 @@
+# Set the DNS resolver to Cloudflare DNS
 resolver 1.1.1.1;
 
+# Set the log format
 log_format rt_cache '$remote_addr - $upstream_cache_status [$time_local]  '
                     '"$request" $status $body_bytes_sent '
-                    '"$http_referer" "$http_user_agent"';
-
+                    '$uri|$query_string|$request_body_md5';
+# Set the log folder
 access_log   /usr/local/openresty/nginx/logs/access.log rt_cache;
 
+# Configure the cache
 proxy_cache_path ~ levels=1:2 keys_zone=json_rpc_cache:50m max_size=6g inactive=60m use_temp_path=off;
 
 server {
   listen 80;
   default_type application/json;
+  # The request body hash variable, to be used for caching
   set $request_body_md5 "";
-  rewrite_by_lua '
-    ngx.req.read_body()
-    local body = ngx.req.get_body_data()
-    ngx.var.request_body_md5 = ngx.md5(body)
-  ';
+  # The request JSON RPC id, to modify the cached response
+  set $json_rpc_id "";
+  rewrite_by_lua_block {
+    -- Parses the JSON request body,
+    -- uses the JSON RPC method and params as the cache index
+    local gethash = function()
+      local cjson = require("cjson")
+      ngx.req.read_body()
+      local body = ngx.req.get_body_data()
+      local obj = cjson.decode(body)
+      ngx.var.json_rpc_id = tostring(obj.id)
+      return ngx.md5(obj.method .. cjson.encode(obj.params))
+    end
+    -- run the gethash function in protected mode (catch errors)
+    local status, val = pcall(gethash)
 
+    -- if the function execution succeeded, set the body hash
+    -- else, if the function failed set a random hash to prevent accidental cache
+    if status then
+      ngx.var.request_body_md5 = val
+    else
+      ngx.var.request_body_md5 = ngx.md5(tostring(math.random()))
+    end
+  }
+
+  # Handle healthcheck calls
   location /healthz {
     return 200 "healthy\n";
   }
 
+  # Catch all route
   location / {
+    # Setup the cache
     proxy_cache json_rpc_cache;
+    # only for POST calls
     proxy_cache_methods POST;
-    proxy_cache_key "$uri|$query_string|$request_body_md5";
-    proxy_cache_min_uses 1;
+    # set the cache index key
+    proxy_cache_key "$request_body_md5";
+    # blocking cache operation, concurrent requests will wait
     proxy_cache_lock on;
+    # use stale cache when upstream errors out
     proxy_cache_use_stale error timeout http_500 http_502 http_503 http_504;
+    # cache is valid if response is successfull, for a duration of CACHE_TIME
     proxy_cache_valid 200 ${CACHE_TIME};
 
+    # Set necessary proxy forwarding headers
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_ignore_headers Cache-Control;
     proxy_set_header Host ${ADDRESS};
 
+    # Set up the upstream server
     proxy_ssl_server_name on;
     set $upstream_address ${ADDRESS};
     proxy_pass https://$upstream_address:443;
+
+    # Reset the response's content_length, to be able to generate a new body
+    header_filter_by_lua_block { ngx.header.content_length = nil }
+
+    body_filter_by_lua_block {
+      
+      if ngx.var.upstream_cache_status ~= "HIT" and ngx.var.upstream_cache_status ~= "STALE" then
+        return
+      end
+     
+      local newbody, n, err = string.gsub(ngx.arg[1], '"id":%s?"?%d+"?', string.format('"id": %s', ngx.var.json_rpc_id))
+
+      if newbody then
+        ngx.arg[1] = newbody
+      end
+    }
   }
 }
